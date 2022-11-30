@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-tw">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Chatroom</title>
+    <link rel="stylesheet" href="/stylesheets/inde.css" charset="utf-8">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        
+        var socket = io();
+    </script>
+</head>
+<body>
+    <div id="container">
+        
+        <select id="changeroom" onchange="ChangeRoom();">
+            <option value=''>請選擇房間</option>
+            <option value='room1'>房間一</option>
+            <option value='room2'>房間二</option>
+        </select>
+        <div id="status-box">Server: <span id="status"></span> </div>
+        <div id="content">
+            
+        </div>
+        <form id = "upload-image">
+            <input class="choose-file-btn" id="imagestore"  type="file" name="myImage"/>
+            <input class="upload-btn" type="submit" value="Upload Photo" />
+        </form>
+        <div id="send-box">
+            <form id="send-form">
+                <input type="text" name="name" id="name" placeholder="暱稱">
+                <input type="text" name="msg" id="msg" placeholder="說點什麼？">
+                <input type="submit" value="送出">
+            </form>
+        </div>
+    </div>
+
+    <script>
+            var nSel = document.getElementById("changeroom");
+            function ChangeRoom(){
+                var index = nSel.selectedIndex; // 选中索引
+                var room = nSel.options[index].value; // 选中文本
+                console.log(room)
+                if(room !== ''){
+                    socket.emit('addRoom', room)
+                }
+            }
+         document.addEventListener("DOMContentLoaded", () => {
+            var max_record;
+            var status = document.getElementById("status");
+            var online = document.getElementById("online");
+            var sendForm = document.getElementById("send-form"); 
+            var content = document.getElementById("content");
+            var file = document.getElementById("file");
+            var nameInputBox = document.getElementById("name");
+            var uploadImage = document.getElementById("upload-image");
+            var image = document.getElementById("imagestore");
+            var roomid;
+
+            socket.on("connect", function () {
+                status.innerText = "Connected.";
+                roomid = 'room2';
+                socket.emit("getrecord", roomid);
+            });
+            
+            // 載入歷史紀錄
+            socket.on("chatRecord", async function (msgs) {
+                for (var i=0 ; i < msgs.length; i++) {
+                    addMsgToBox(msgs[i])
+                }
+            });
+
+            function ChangeRoom(){
+                var index = nSel.selectedIndex; // 选中索引
+                var room = nSel.options[index].value; // 选中文本
+                console.log(room)
+            }
+
+            //function to 訊息加入聊天室
+            function addMsgToBox (d) {
+                if(d.type == "img"){
+                    var img = document.createElement("img");
+                    img.className = "img"
+                        img.src = d.msg;
+                        var nameBox = document.createElement("span");
+                        nameBox.className = "name";
+                        
+                        var name = document.createTextNode(d.name);
+                        var msgBox = document.createElement("div")
+                        msgBox.className = "msg";
+                        nameBox.appendChild(name);
+                        msgBox.appendChild(nameBox);
+                        msgBox.appendChild(img);
+                        content.appendChild(msgBox);
+                }else{
+                    var msgBox = document.createElement("div")
+                    msgBox.className = "msg";
+                    var nameBox = document.createElement("span");
+                    nameBox.className = "name";
+                    var name = document.createTextNode(d.name);
+                    var msg = document.createTextNode(d.msg);
+            
+                    nameBox.appendChild(name);
+                    msgBox.appendChild(nameBox);
+                    msgBox.appendChild(msg);
+                    content.appendChild(msgBox);
+                    getsrc="msg"
+                }
+                return getsrc;
+                
+            }
+
+            //傳送文字訊息
+            sendForm.addEventListener("submit", function (e) {
+                e.preventDefault();
+        
+                var formData = {};
+                var formChild = sendForm.children;
+        
+                for (var i=0; i< sendForm.childElementCount; i++) {
+                    var child = formChild[i];
+                    if (child.name !== "") {
+                        formData[child.name] = child.value;
+                    }
+                }
+                const date = new Date();
+                formData["time"] = date;
+                formData["roomid"] = roomid;
+                
+                socket.emit("send", formData);
+            });
+
+            //上傳圖片至GCS
+            uploadImage.addEventListener("submit",function(e){
+                e.preventDefault();
+                console.log("click")
+                var formdata = new FormData();
+                var file = uploadImage.children[0];
+                formdata.append("file",file.files[0], file.value);
+
+                var requestOptions = {
+                method: 'POST',
+                body: formdata,
+                redirect: 'follow'
+                };
+                
+                //回傳給mongodb
+                fetch("http://localhost:3000/upload", requestOptions)
+                .then(response => response.text())
+                .then(result => { //image url
+                    const date = new Date();
+                    socket.emit('send', { 
+                        name: "Max", //userid or name
+                        type:"img" ,
+                        msg: result,
+                        time: date,
+                        roomid: roomid,
+                    }); 
+                })
+                .catch(error => console.log('error', error));
+
+            })
+
+            socket.on("online",function(count){
+                console.log(count);
+            });
+            //record成功加入訊息至後端，反映加至前端(不用再reload一次頁面)
+            socket.on("msg",function (msg) {
+                addMsgToBox(msg)
+            });
+            socket.on('addRoom', message => {
+                roomid = message;
+
+            })
+
+        });
+    </script>
+</body>
+</html>
+ 
