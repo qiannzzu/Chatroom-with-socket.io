@@ -9,7 +9,7 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         
-        var socket = io();
+        var socket = io.connect("http://localhost:3000"); 
     </script>
 </head>
 <body>
@@ -42,7 +42,6 @@
             function ChangeRoom(){
                 var index = nSel.selectedIndex; // 选中索引
                 var room = nSel.options[index].value; // 选中文本
-                console.log(room)
                 if(room !== ''){
                     socket.emit('addRoom', room)
                 }
@@ -168,12 +167,9 @@
             });
             //record成功加入訊息至後端，反映加至前端(不用再reload一次頁面)
             socket.on("msg",function (msg) {
+                console.log("Received msg:", msg);
                 addMsgToBox(msg)
             });
-            socket.on('addRoom', message => {
-                roomid = message;
-
-            })
 
         });
     </script>

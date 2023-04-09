@@ -4,14 +4,14 @@ var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 const mongoose = require('mongoose');
-const multer = require('multer');
-const fs = require("fs");
 
 const Message = require('./models/message');
 
 const User = require('./models/user');
+require('dotenv').config()
 
 const Room = require('./models/roommodel');
+const { sendEvent, addRoomEvent } = require('./src/socket.io/socket.controllers/chat.controller');
 
 var app = express();
 
@@ -23,8 +23,7 @@ const server = require('http').Server(app);
 const io = require('socket.io')(server);
 const records = require('./record.js');
 
-const dbURI = 'mongodb+srv://Reni:reni891016@cluster0.vkeuzty.mongodb.net/carpool?retryWrites=true&w=majority'
-mongoose.connect(dbURI)
+mongoose.connect(process.env.dbURI)
   .then((result)=>console.log("connect"))
   .catch((err)=>console.log(err))
 
@@ -39,40 +38,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 
 //mongoose and mongo sandbox routes
-
-
 app.get('/', (req, res) => {
   res.render("chatroom.ejs");
 });
-
-app.get('/chatroom/?roomid', (req, res) => {
-  res.render("chatroom.ejs",{roomid:req.params.roomid});
-});
-
-
-app.get('/all-users',(req,res)=>{
-  User.find()
-    .then((result)=>{
-      res.send(result);
-    })
-    .catch((err)=>{
-      console.log(err)
-    })
-})
-//add user
-app.post('/users',(req,res)=>{
-  console.log(req.body)
-  const user = new User(req.body);
-  user.save()
-    .then((result)=>{
-      res.send(result)
-    })
-    .catch((err)=>{
-      console.log(err)
-    })
-  
-
-})
 
 //create and get roomid
 app.post('/room',(req,res)=>{
@@ -110,44 +78,13 @@ app.get('/getchatrecord/:roomid',(req,res)=>{
   })
 })
 
-//user login
-app.post('/login',(req,res)=>{
-  User.findOne({
-    mail: req.body.mail
-  }).exec((err, user)=>{
-    if(err){
-      res.status(500).send({ message: err });
-      return;
-    }
-    if(!user){
-      res.status(404).send({ message: "User Not found." });
-      return;
-    }
-    var passwordIsValid = req.body.password===user.password
-    if (!passwordIsValid) {
-      return res.status(401).send({ message: "Invalid Password!" });
-    }
-    res.status(200).send({
-      text:"success",
-      _id: user._id,
-      mail: user.mail,
-      __v: user.__v
-    })
-  })
-
-})
-
 // 修改 connection 事件
 io.on('connection', (socket) => {
     //使用者發送新文字訊息
     socket.on("send", (msg) => {
-      console.log("msg",msg)
-      records.push(msg);
+      sendEvent(io.sockets, msg);
     });
 
-    // records.get((msgs) => {
-    //     socket.emit("chatRecord", msgs);
-    // });
     socket.on('getrecord',room => {
       Message.find({'roomid':room}).sort({_id:-1}).limit(50) //id為具時間之排序 取最後50筆
         .then((result)=>{
@@ -159,23 +96,13 @@ io.on('connection', (socket) => {
         })
     })
     socket.on('addRoom', room => {
-      socket.join(room)
-      console.log(room)
-      // //(1)發送給在同一個 room 中除了自己外的 Client
-      // socket.to(room).emit('addRoom', '已有新人加入聊天室！'+room)
-      //(2)發送給在 room 中所有的 Client
-      io.sockets.in(room).emit('addRoom',room)
+      addRoomEvent(io, socket, room);
   })
+    socket.on("emit_msg", (msg) => {
+      console.log("msg_emit",msg)
+    })
    
 });
-// Records 的事件監聽器(新增訊息成功 回傳至前端訊息內容)
-records.on("new_message", (msg) => {
-  // 廣播訊息到聊天室
-  console.log("rmid",msg.roomid)
-  io.sockets.in(msg.roomid).emit('msg',msg)
-  // io.emit("msg", msg);
-});
-
 
 server.listen(3000, () => {
   console.log("Server Started. http://localhost:3000");
